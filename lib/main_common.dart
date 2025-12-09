@@ -15,9 +15,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: appName,
       home: Scaffold(
-        appBar: AppBar(
-          title: Text(appName),
-        ),
+        appBar: AppBar(title: Text(appName)),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
