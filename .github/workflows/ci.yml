@@ -1,22 +1,20 @@
-name: Flutter CI
+name: Flutter Pipeline
 
 on:
   push:
-    branches: [ dev, main ]
+    branches: [ dev, staging, main ]
   pull_request:
-    branches: [ dev, main ]
+    branches: [ dev, staging, main ]
 
 jobs:
   analyze:
-    name: Analyze & Format
+    name: Code Analysis
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
@@ -24,23 +22,21 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Check formatting
+      - name: Run formatter
         run: dart format --output=none --set-exit-if-changed .
 
-      - name: Analyze code
+      - name: Run analyzer
         run: flutter analyze --fatal-infos --fatal-warnings
 
-  test:
-    name: Tests & Coverage
+  tests:
+    name: Run Tests with Coverage
     runs-on: ubuntu-latest
     needs: analyze
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
@@ -48,7 +44,7 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Run tests with coverage
+      - name: Run tests
         run: flutter test --coverage
 
       - name: Install lcov & bc
@@ -56,26 +52,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y lcov bc
 
-      - name: Check coverage threshold (>= 70%)
+      - name: Check coverage threshold
         run: bash scripts/check_coverage.sh
 
-      - name: Upload coverage report
+      - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: coverage-info
           path: coverage/lcov.info
 
   build:
-    name: Build Android APK (prod)
+    name: Matrix Build (dev, staging, prod)
     runs-on: ubuntu-latest
-    needs: test
+    needs: tests
+
+    strategy:
+      matrix:
+        env: [ dev, staging, prod ]
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
@@ -83,18 +81,52 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Increment version
-        run: bash scripts/increment_version.sh
-
-      - name: Build APK (prod env)
+      - name: Build APK for matrix environment
         run: |
+          echo "Environment: ${{ matrix.env }}"
+          API_URL="https://api-${{ matrix.env }}.example.com"
+
           flutter build apk \
             --release \
-            --dart-define=BUILD_ENV=prod \
-            --dart-define=API_URL=https://api.example.com
+            --dart-define=BUILD_ENV=${{ matrix.env }} \
+            --dart-define=API_URL=$API_URL
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-prod-apk
+          name: app-${{ matrix.env }}.apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+  version:
+    name: Automated Version Bump
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Increment version
+        run: bash scripts/increment_version.sh
+
+      - name: Commit and push updated version
+        run: |
+          git config --global user.email "ci-bot@example.com"
+          git config --global user.name "CI Bot"
+          git add pubspec.yaml
+          git commit -m "CI version bump"
+          git push origin HEAD:${GITHUB_REF#refs/heads/}
+
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: version
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "CI pipeline executed successfully." >> $GITHUB_STEP_SUMMARY
+          echo "Code analysis: passed" >> $GITHUB_STEP_SUMMARY
+          echo "Tests and coverage: passed" >> $GITHUB_STEP_SUMMARY
+          echo "Matrix builds completed for dev, staging, prod" >> $GITHUB_STEP_SUMMARY
+          echo "Version increment performed" >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts uploaded" >> $GITHUB_STEP_SUMMARY
