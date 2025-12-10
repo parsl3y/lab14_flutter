@@ -1,5 +1,9 @@
 name: Flutter Pipeline
 
+permissions:
+  contents: write
+  pull-requests: write
+
 on:
   push:
     branches: [ dev, staging, main ]
@@ -13,6 +17,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -28,6 +34,7 @@ jobs:
       - name: Run analyzer
         run: flutter analyze --fatal-infos --fatal-warnings
 
+
   tests:
     name: Run Tests with Coverage
     runs-on: ubuntu-latest
@@ -35,6 +42,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -61,6 +70,7 @@ jobs:
           name: coverage-info
           path: coverage/lcov.info
 
+
   build:
     name: Matrix Build (dev, staging, prod)
     runs-on: ubuntu-latest
@@ -72,6 +82,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -97,6 +109,7 @@ jobs:
           name: app-${{ matrix.env }}.apk
           path: build/app/outputs/flutter-apk/app-release.apk
 
+
   version:
     name: Automated Version Bump
     runs-on: ubuntu-latest
@@ -104,6 +117,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Increment version
         run: bash scripts/increment_version.sh
@@ -112,9 +127,13 @@ jobs:
         run: |
           git config --global user.email "ci-bot@example.com"
           git config --global user.name "CI Bot"
+
           git add pubspec.yaml
-          git commit -m "CI version bump"
+          git commit -m "CI version bump" || echo "No changes to commit"
+
+          git pull --rebase origin ${GITHUB_REF#refs/heads/}
           git push origin HEAD:${GITHUB_REF#refs/heads/}
+
 
   summary:
     name: CI Summary
